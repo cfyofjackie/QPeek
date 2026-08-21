@@ -46,15 +46,15 @@ public partial class App : Application
         }
 
         _isOpeningPreview = true;
-        Dispatcher.BeginInvoke(() => OpenSelectedExplorerJpg(foregroundWindow));
+        Dispatcher.BeginInvoke(() => OpenSelectedExplorerImage(foregroundWindow));
         return true;
     }
 
-    private void OpenSelectedExplorerJpg(nint explorerWindowHandle)
+    private void OpenSelectedExplorerImage(nint explorerWindowHandle)
     {
         _isOpeningPreview = false;
 
-        var imagePath = GetSelectedExplorerJpgFilePath(explorerWindowHandle);
+        var imagePath = GetSelectedExplorerImageFilePath(explorerWindowHandle);
         if (imagePath is null)
         {
             return;
@@ -82,7 +82,7 @@ public partial class App : Application
         return string.Equals(process.ProcessName, "explorer", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string? GetSelectedExplorerJpgFilePath(nint explorerWindowHandle)
+    private static string? GetSelectedExplorerImageFilePath(nint explorerWindowHandle)
     {
         var shellType = Type.GetTypeFromProgID("Shell.Application");
         if (shellType is null)
@@ -107,7 +107,7 @@ public partial class App : Application
                 for (var itemIndex = 0; itemIndex < selectedItems.Count; itemIndex++)
                 {
                     var selectedPath = (string?)selectedItems.Item(itemIndex).Path;
-                    if (IsJpg(selectedPath))
+                    if (IsSupportedImage(selectedPath))
                     {
                         return selectedPath;
                     }
@@ -122,11 +122,13 @@ public partial class App : Application
         return null;
     }
 
-    private static bool IsJpg(string? path)
+    private static bool IsSupportedImage(string? path)
     {
         var extension = Path.GetExtension(path);
         return string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase);
+               string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(extension, ".webp", StringComparison.OrdinalIgnoreCase);
     }
 
     [DllImport("user32.dll")]

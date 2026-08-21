@@ -8,7 +8,9 @@
 
 ## 当前状态
 
-项目处于 SLC（Simple, Lovable, Complete）规划阶段，尚未开始实现。
+已完成 V0.1 核心 JPG 快速预览和 V0.2 静态图片预览体验。
+
+当前支持 JPG/JPEG、PNG 和 WEBP 静态图片；WEBP 需要 Windows 提供可用的 WebP 图片编解码器。
 
 首个版本的功能范围、非目标和产品原则见 [SLC.md](SLC.md)。
 
