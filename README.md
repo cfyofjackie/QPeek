@@ -6,6 +6,11 @@
 
 这不是要一次性复刻 QuickLook，而是一个通过实际完成 Windows 桌面工具来学习的项目。
 
+## 当前运行方式
+
+$env:PATH = "$PWD\.dotnet;$env:PATH"
+dotnet run
+
 ## 当前状态
 
 已完成 V0.1 核心 JPG 快速预览和 V0.2 静态图片预览体验。

@@ -63,6 +63,7 @@ public partial class App : Application
         _previewWindow = new MainWindow(imagePath);
         _previewWindow.Closed += (_, _) => _previewWindow = null;
         _previewWindow.Show();
+        _previewWindow.Activate();
     }
 
     private static bool IsExplorerWindow(nint windowHandle)

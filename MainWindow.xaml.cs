@@ -39,11 +39,21 @@ public partial class MainWindow : Window
         BitmapImage image;
         try
         {
+            var imageInfo = ReadImageInfo(imagePath);
+            var decodeScale = GetDecodeScale(imageInfo);
+
             image = new BitmapImage();
             image.BeginInit();
             image.UriSource = new Uri(Path.GetFullPath(imagePath));
             image.CacheOption = BitmapCacheOption.OnLoad;
+            image.Rotation = imageInfo.Rotation;
+            if (decodeScale < 1)
+            {
+                image.DecodePixelWidth = (int)Math.Ceiling(imageInfo.PixelWidth * decodeScale);
+            }
             image.EndInit();
+
+            SetInitialWindowSize(imageInfo, decodeScale);
         }
         catch (Exception) when (IsWebp(imagePath))
         {
@@ -59,23 +69,45 @@ public partial class MainWindow : Window
         PreviewImage.Source = image;
         Title = $"Windows Quick Preview - {Path.GetFileName(imagePath)}";
         StatusText.Text = Path.GetFileName(imagePath);
-        SetInitialWindowSize(image);
     }
 
-    private void SetInitialWindowSize(BitmapImage image)
+    private void SetInitialWindowSize((int PixelWidth, int PixelHeight, Rotation Rotation) imageInfo, double scale)
+    {
+        var (maximumImageWidth, maximumImageHeight) = GetMaximumImageSize();
+        var imageWidth = imageInfo.PixelWidth * scale;
+        var imageHeight = imageInfo.PixelHeight * scale;
+
+        if (imageInfo.Rotation is Rotation.Rotate90 or Rotation.Rotate270)
+        {
+            (imageWidth, imageHeight) = (imageHeight, imageWidth);
+        }
+
+        Width = Math.Clamp(imageWidth + WindowPadding, MinimumWindowWidth, maximumImageWidth + WindowPadding);
+        Height = Math.Clamp(imageHeight + WindowPadding + StatusTextHeight, MinimumWindowHeight, maximumImageHeight + WindowPadding + StatusTextHeight);
+    }
+
+    private static double GetDecodeScale((int PixelWidth, int PixelHeight, Rotation Rotation) imageInfo)
+    {
+        var (maximumImageWidth, maximumImageHeight) = GetMaximumImageSize();
+        var displayWidth = imageInfo.PixelWidth;
+        var displayHeight = imageInfo.PixelHeight;
+
+        if (imageInfo.Rotation is Rotation.Rotate90 or Rotation.Rotate270)
+        {
+            (displayWidth, displayHeight) = (displayHeight, displayWidth);
+        }
+
+        return Math.Min(1, Math.Min(
+            maximumImageWidth / displayWidth,
+            maximumImageHeight / displayHeight));
+    }
+
+    private static (double Width, double Height) GetMaximumImageSize()
     {
         var workArea = SystemParameters.WorkArea;
-        var maximumWidth = Math.Max(MinimumWindowWidth, workArea.Width * MaximumScreenFraction);
-        var maximumHeight = Math.Max(MinimumWindowHeight, workArea.Height * MaximumScreenFraction);
-        var maximumImageWidth = maximumWidth - WindowPadding;
-        var maximumImageHeight = maximumHeight - WindowPadding - StatusTextHeight;
-
-        var scale = Math.Min(1, Math.Min(
-            maximumImageWidth / image.PixelWidth,
-            maximumImageHeight / image.PixelHeight));
-
-        Width = Math.Clamp(image.PixelWidth * scale + WindowPadding, MinimumWindowWidth, maximumWidth);
-        Height = Math.Clamp(image.PixelHeight * scale + WindowPadding + StatusTextHeight, MinimumWindowHeight, maximumHeight);
+        var maximumWindowWidth = Math.Max(MinimumWindowWidth, workArea.Width * MaximumScreenFraction);
+        var maximumWindowHeight = Math.Max(MinimumWindowHeight, workArea.Height * MaximumScreenFraction);
+        return (maximumWindowWidth - WindowPadding, maximumWindowHeight - WindowPadding - StatusTextHeight);
     }
 
     private static bool IsSupportedImage(string path)
@@ -90,6 +122,24 @@ public partial class MainWindow : Window
     private static bool IsWebp(string path)
     {
         return string.Equals(Path.GetExtension(path), ".webp", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static (int PixelWidth, int PixelHeight, Rotation Rotation) ReadImageInfo(string imagePath)
+    {
+        var decoder = BitmapDecoder.Create(
+            new Uri(Path.GetFullPath(imagePath)),
+            BitmapCreateOptions.DelayCreation,
+            BitmapCacheOption.None);
+        var frame = decoder.Frames[0];
+        var rotation = frame.Metadata as BitmapMetadata;
+
+        return (frame.PixelWidth, frame.PixelHeight, rotation?.GetQuery("/app1/ifd/{ushort=274}") switch
+        {
+            ushort value when value == 3 => Rotation.Rotate180,
+            ushort value when value == 6 => Rotation.Rotate90,
+            ushort value when value == 8 => Rotation.Rotate270,
+            _ => Rotation.Rotate0
+        });
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
