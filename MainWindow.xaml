@@ -4,6 +4,7 @@
         Title="Windows Quick Preview"
         MinWidth="320"
         MinHeight="240"
+        WindowStartupLocation="CenterScreen"
         KeyDown="Window_KeyDown">
     <Grid>
         <Grid.RowDefinitions>

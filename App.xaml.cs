@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -9,6 +10,7 @@ namespace QuickLook;
 
 public partial class App : Application
 {
+    private const string WindowPositionFormat = "center-v1";
     private GlobalKeyboardHook? _keyboardHook;
     private MainWindow? _previewWindow;
     private bool _isOpeningPreview;
@@ -107,9 +109,11 @@ public partial class App : Application
 
         _previewWindow = new MainWindow(imagePath);
         var previewWindow = _previewWindow;
+        ApplySavedPreviewWindowPosition(previewWindow);
         _previewExplorerWindowHandle = explorerWindowHandle;
         previewWindow.Closed += (_, _) =>
         {
+            SavePreviewWindowPosition(previewWindow);
             _previewWindow = null;
             _previewExplorerWindowHandle = 0;
         };
@@ -137,6 +141,104 @@ public partial class App : Application
                 AttachThreadInput(previewThreadId, explorerThreadId, false);
             }
         }
+    }
+
+    private static void ApplySavedPreviewWindowPosition(MainWindow previewWindow)
+    {
+        try
+        {
+            var positionFilePath = GetWindowPositionFilePath();
+            if (!File.Exists(positionFilePath))
+            {
+                return;
+            }
+
+            var coordinates = File.ReadAllLines(positionFilePath);
+            double left;
+            double top;
+
+            if (coordinates.Length >= 3 &&
+                string.Equals(coordinates[0], WindowPositionFormat, StringComparison.Ordinal) &&
+                double.TryParse(coordinates[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var centerX) &&
+                double.TryParse(coordinates[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var centerY))
+            {
+                left = centerX - previewWindow.Width / 2;
+                top = centerY - previewWindow.Height / 2;
+            }
+            else if (coordinates.Length >= 2 &&
+                     double.TryParse(coordinates[0], NumberStyles.Float, CultureInfo.InvariantCulture, out left) &&
+                     double.TryParse(coordinates[1], NumberStyles.Float, CultureInfo.InvariantCulture, out top))
+            {
+                // The original two-line format stored Left and Top. It is
+                // converted to the center format the next time the window closes.
+            }
+            else
+            {
+                return;
+            }
+
+            if (!IsVisibleOnCurrentDesktop(previewWindow, left, top))
+            {
+                return;
+            }
+
+            previewWindow.WindowStartupLocation = WindowStartupLocation.Manual;
+            previewWindow.Left = left;
+            previewWindow.Top = top;
+        }
+        catch (Exception)
+        {
+            // A missing or unreadable optional setting must not block preview.
+        }
+    }
+
+    private static void SavePreviewWindowPosition(MainWindow previewWindow)
+    {
+        var centerX = previewWindow.Left + previewWindow.ActualWidth / 2;
+        var centerY = previewWindow.Top + previewWindow.ActualHeight / 2;
+
+        if (!double.IsFinite(centerX) || !double.IsFinite(centerY))
+        {
+            return;
+        }
+
+        try
+        {
+            var positionFilePath = GetWindowPositionFilePath();
+            Directory.CreateDirectory(Path.GetDirectoryName(positionFilePath)!);
+            File.WriteAllLines(positionFilePath,
+            [
+                WindowPositionFormat,
+                centerX.ToString(CultureInfo.InvariantCulture),
+                centerY.ToString(CultureInfo.InvariantCulture)
+            ]);
+        }
+        catch (Exception)
+        {
+            // Saving the optional position must not interfere with closing.
+        }
+    }
+
+    private static string GetWindowPositionFilePath()
+    {
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "QuickLook",
+            "window-position.txt");
+    }
+
+    private static bool IsVisibleOnCurrentDesktop(MainWindow previewWindow, double left, double top)
+    {
+        const double minimumVisibleSize = 50;
+        var virtualScreenRight = SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth;
+        var virtualScreenBottom = SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight;
+
+        return double.IsFinite(left) &&
+               double.IsFinite(top) &&
+               left + previewWindow.Width >= SystemParameters.VirtualScreenLeft + minimumVisibleSize &&
+               left <= virtualScreenRight - minimumVisibleSize &&
+               top + previewWindow.Height >= SystemParameters.VirtualScreenTop + minimumVisibleSize &&
+               top <= virtualScreenBottom - minimumVisibleSize;
     }
 
     private static bool IsExplorerWindow(nint windowHandle)
