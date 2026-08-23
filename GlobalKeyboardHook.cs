@@ -9,6 +9,9 @@ public sealed class GlobalKeyboardHook : IDisposable
     private const int WhKeyboardLl = 13;
     private const int WmKeyDown = 0x0100;
     private const int VkSpace = 0x20;
+    private const int VkEnter = 0x0D;
+    private const int VkControl = 0x11;
+    private const int VkC = 0x43;
 
     private readonly HookProcedure _hookProcedure;
     private nint _hookHandle;
@@ -19,6 +22,8 @@ public sealed class GlobalKeyboardHook : IDisposable
     }
 
     public Func<bool>? SpacePressed { get; init; }
+    public Func<bool>? EnterPressed { get; init; }
+    public Func<bool>? CopyPressed { get; init; }
 
     public void Start()
     {
@@ -40,16 +45,26 @@ public sealed class GlobalKeyboardHook : IDisposable
 
     private nint HookCallback(int code, nint message, nint data)
     {
-        if (code >= 0 && message == WmKeyDown && Marshal.ReadInt32(data) == VkSpace &&
-            SpacePressed?.Invoke() == true)
+        if (code >= 0 && message == WmKeyDown)
         {
-            return 1;
+            var key = Marshal.ReadInt32(data);
+            if ((key == VkSpace && SpacePressed?.Invoke() == true) ||
+                (key == VkEnter && EnterPressed?.Invoke() == true) ||
+                (key == VkC && IsKeyDown(VkControl) && CopyPressed?.Invoke() == true))
+            {
+                return 1;
+            }
         }
 
         return CallNextHookEx(_hookHandle, code, message, data);
     }
 
     private delegate nint HookProcedure(int code, nint message, nint data);
+
+    private static bool IsKeyDown(int key)
+    {
+        return (GetAsyncKeyState(key) & 0x8000) != 0;
+    }
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern nint SetWindowsHookEx(int hookType, HookProcedure procedure, nint module, uint threadId);
@@ -59,4 +74,7 @@ public sealed class GlobalKeyboardHook : IDisposable
 
     [DllImport("user32.dll")]
     private static extern nint CallNextHookEx(nint hookHandle, int code, nint message, nint data);
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int key);
 }

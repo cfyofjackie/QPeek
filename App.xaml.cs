@@ -3,20 +3,30 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Interop;
 
 namespace QuickLook;
 
 public partial class App : Application
 {
+    private static readonly nint HwndTopmost = -1;
+    private static readonly nint HwndNotTopmost = -2;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoActivate = 0x0010;
+
     private GlobalKeyboardHook? _keyboardHook;
     private MainWindow? _previewWindow;
     private bool _isOpeningPreview;
+    private nint _previewExplorerWindowHandle;
 
     private void App_Startup(object sender, StartupEventArgs e)
     {
         _keyboardHook = new GlobalKeyboardHook
         {
-            SpacePressed = HandleSpacePressed
+            SpacePressed = HandleSpacePressed,
+            EnterPressed = HandleEnterPressed,
+            CopyPressed = HandleCopyPressed
         };
         _keyboardHook.Start();
     }
@@ -50,6 +60,47 @@ public partial class App : Application
         return true;
     }
 
+    private bool HandleEnterPressed()
+    {
+        if (_previewWindow is null)
+        {
+            return false;
+        }
+
+        var previewWindow = _previewWindow;
+        var explorerWindowHandle = _previewExplorerWindowHandle;
+
+        if (Dispatcher.CheckAccess())
+        {
+            previewWindow.Close();
+        }
+        else
+        {
+            Dispatcher.Invoke(previewWindow.Close);
+        }
+
+        if (explorerWindowHandle != 0)
+        {
+            SetForegroundWindow(explorerWindowHandle);
+        }
+
+        // Let the original Enter continue to Explorer so Windows performs
+        // its normal "open with the default app" behavior.
+        return false;
+    }
+
+    private bool HandleCopyPressed()
+    {
+        if (_previewWindow is null)
+        {
+            return false;
+        }
+
+        var previewWindow = _previewWindow;
+        Dispatcher.BeginInvoke(previewWindow.CopyFileToClipboard);
+        return true;
+    }
+
     private void OpenSelectedExplorerImage(nint explorerWindowHandle)
     {
         _isOpeningPreview = false;
@@ -61,9 +112,35 @@ public partial class App : Application
         }
 
         _previewWindow = new MainWindow(imagePath);
-        _previewWindow.Closed += (_, _) => _previewWindow = null;
-        _previewWindow.Show();
-        _previewWindow.Activate();
+        var previewWindow = _previewWindow;
+        _previewExplorerWindowHandle = explorerWindowHandle;
+        previewWindow.Closed += (_, _) =>
+        {
+            _previewWindow = null;
+            _previewExplorerWindowHandle = 0;
+        };
+        previewWindow.Show();
+        previewWindow.Activate();
+        var previewWindowHandle = new WindowInteropHelper(previewWindow).Handle;
+
+        // Raise the preview above Explorer, then immediately return it to
+        // the normal window level so later clicks can cover it naturally.
+        SetWindowPos(
+            previewWindowHandle,
+            HwndTopmost,
+            0,
+            0,
+            0,
+            0,
+            SwpNoSize | SwpNoMove | SwpNoActivate);
+        SetWindowPos(
+            previewWindowHandle,
+            HwndNotTopmost,
+            0,
+            0,
+            0,
+            0,
+            SwpNoSize | SwpNoMove | SwpNoActivate);
     }
 
     private static bool IsExplorerWindow(nint windowHandle)
@@ -134,6 +211,19 @@ public partial class App : Application
 
     [DllImport("user32.dll")]
     private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(nint windowHandle);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        nint windowHandle,
+        nint insertAfterWindow,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);

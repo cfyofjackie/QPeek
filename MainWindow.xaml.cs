@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Specialized;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
@@ -13,6 +14,7 @@ public partial class MainWindow : Window
     private const double WindowPadding = 24;
     private const double StatusTextHeight = 36;
     private const double MaximumScreenFraction = 0.8;
+    private readonly string? _imagePath;
 
     public MainWindow(string? imagePath)
     {
@@ -35,6 +37,8 @@ public partial class MainWindow : Window
             StatusText.Text = "Step 3 supports JPG, JPEG, PNG, and WEBP files.";
             return;
         }
+
+        _imagePath = Path.GetFullPath(imagePath);
 
         BitmapImage image;
         try
@@ -147,6 +151,28 @@ public partial class MainWindow : Window
         if (e.Key == Key.Escape)
         {
             Close();
+        }
+    }
+
+    internal void CopyFileToClipboard()
+    {
+        if (_imagePath is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var files = new StringCollection
+            {
+                _imagePath
+            };
+            Clipboard.SetFileDropList(files);
+            StatusText.Text = $"Copied {Path.GetFileName(_imagePath)}";
+        }
+        catch (Exception)
+        {
+            StatusText.Text = "The file could not be copied.";
         }
     }
 }
