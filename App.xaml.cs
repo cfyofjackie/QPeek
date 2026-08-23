@@ -9,12 +9,6 @@ namespace QuickLook;
 
 public partial class App : Application
 {
-    private static readonly nint HwndTopmost = -1;
-    private static readonly nint HwndNotTopmost = -2;
-    private const uint SwpNoSize = 0x0001;
-    private const uint SwpNoMove = 0x0002;
-    private const uint SwpNoActivate = 0x0010;
-
     private GlobalKeyboardHook? _keyboardHook;
     private MainWindow? _previewWindow;
     private bool _isOpeningPreview;
@@ -119,28 +113,30 @@ public partial class App : Application
             _previewWindow = null;
             _previewExplorerWindowHandle = 0;
         };
-        previewWindow.Show();
-        previewWindow.Activate();
-        var previewWindowHandle = new WindowInteropHelper(previewWindow).Handle;
+        var previewWindowHandle = new WindowInteropHelper(previewWindow).EnsureHandle();
+        var previewThreadId = GetWindowThreadProcessId(previewWindowHandle, out _);
+        var explorerThreadId = GetWindowThreadProcessId(explorerWindowHandle, out _);
+        var inputThreadsAttached =
+            previewThreadId != 0 &&
+            explorerThreadId != 0 &&
+            previewThreadId != explorerThreadId &&
+            AttachThreadInput(previewThreadId, explorerThreadId, true);
 
-        // Raise the preview above Explorer, then immediately return it to
-        // the normal window level so later clicks can cover it naturally.
-        SetWindowPos(
-            previewWindowHandle,
-            HwndTopmost,
-            0,
-            0,
-            0,
-            0,
-            SwpNoSize | SwpNoMove | SwpNoActivate);
-        SetWindowPos(
-            previewWindowHandle,
-            HwndNotTopmost,
-            0,
-            0,
-            0,
-            0,
-            SwpNoSize | SwpNoMove | SwpNoActivate);
+        try
+        {
+            // Temporarily share input state with Explorer so Windows accepts
+            // the foreground hand-off. The preview remains a normal window.
+            previewWindow.Show();
+            SetForegroundWindow(previewWindowHandle);
+            previewWindow.Activate();
+        }
+        finally
+        {
+            if (inputThreadsAttached)
+            {
+                AttachThreadInput(previewThreadId, explorerThreadId, false);
+            }
+        }
     }
 
     private static bool IsExplorerWindow(nint windowHandle)
@@ -216,14 +212,10 @@ public partial class App : Application
     private static extern bool SetForegroundWindow(nint windowHandle);
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(
-        nint windowHandle,
-        nint insertAfterWindow,
-        int x,
-        int y,
-        int width,
-        int height,
-        uint flags);
+    private static extern bool AttachThreadInput(
+        uint firstThreadId,
+        uint secondThreadId,
+        bool attach);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);
