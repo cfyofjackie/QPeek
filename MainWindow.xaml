@@ -16,6 +16,13 @@
                Margin="12"
                Stretch="Uniform"
                StretchDirection="Both" />
+        <TextBox x:Name="PreviewText"
+                 Margin="12"
+                 IsReadOnly="True"
+                 TextWrapping="Wrap"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Disabled"
+                 Visibility="Collapsed" />
         <TextBlock x:Name="StatusText"
                    Grid.Row="1"
                    Margin="12,0,12,12"

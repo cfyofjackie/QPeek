@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace QuickLook;
@@ -14,41 +15,49 @@ public partial class MainWindow : Window
     private const double WindowPadding = 24;
     private const double StatusTextHeight = 36;
     private const double MaximumScreenFraction = 0.8;
-    private readonly string? _imagePath;
+    private const double DefaultTextWindowWidth = 800;
+    private const double DefaultTextWindowHeight = 600;
+    private readonly string? _filePath;
 
-    public MainWindow(string? imagePath)
+    public MainWindow(string? filePath)
     {
         InitializeComponent();
 
-        if (string.IsNullOrWhiteSpace(imagePath))
+        if (string.IsNullOrWhiteSpace(filePath))
         {
-            StatusText.Text = "Select an image in Explorer, then run the app.";
+            StatusText.Text = "Select a supported file in Explorer, then run the app.";
             return;
         }
 
-        if (!File.Exists(imagePath))
+        if (!File.Exists(filePath))
         {
-            StatusText.Text = "The image file was not found.";
+            StatusText.Text = "The file was not found.";
             return;
         }
 
-        if (!IsSupportedImage(imagePath))
+        _filePath = Path.GetFullPath(filePath);
+
+        if (IsTextPreviewFile(filePath))
         {
-            StatusText.Text = "Step 3 supports JPG, JPEG, PNG, and WEBP files.";
+            ShowTextPreview(filePath);
             return;
         }
 
-        _imagePath = Path.GetFullPath(imagePath);
+        if (!IsSupportedImage(filePath))
+        {
+            StatusText.Text = "This file type is not supported.";
+            return;
+        }
 
         BitmapImage image;
         try
         {
-            var imageInfo = ReadImageInfo(imagePath);
+            var imageInfo = ReadImageInfo(filePath);
             var decodeScale = GetDecodeScale(imageInfo);
 
             image = new BitmapImage();
             image.BeginInit();
-            image.UriSource = new Uri(Path.GetFullPath(imagePath));
+            image.UriSource = new Uri(Path.GetFullPath(filePath));
             image.CacheOption = BitmapCacheOption.OnLoad;
             image.Rotation = imageInfo.Rotation;
             if (decodeScale < 1)
@@ -57,9 +66,9 @@ public partial class MainWindow : Window
             }
             image.EndInit();
 
-            SetInitialWindowSize(imageInfo, decodeScale);
+            SetInitialImageWindowSize(imageInfo, decodeScale);
         }
-        catch (Exception) when (IsWebp(imagePath))
+        catch (Exception) when (IsWebp(filePath))
         {
             StatusText.Text = "WEBP preview requires a Windows WebP image codec.";
             return;
@@ -71,11 +80,46 @@ public partial class MainWindow : Window
         }
 
         PreviewImage.Source = image;
-        Title = $"Windows Quick Preview - {Path.GetFileName(imagePath)}";
-        StatusText.Text = Path.GetFileName(imagePath);
+        Title = $"Windows Quick Preview - {Path.GetFileName(filePath)}";
+        StatusText.Text = Path.GetFileName(filePath);
     }
 
-    private void SetInitialWindowSize((int PixelWidth, int PixelHeight, Rotation Rotation) imageInfo, double scale)
+    private void ShowTextPreview(string textPath)
+    {
+        SetInitialTextWindowSize();
+        PreviewImage.Visibility = Visibility.Collapsed;
+        PreviewText.Visibility = Visibility.Visible;
+        Title = $"Windows Quick Preview - {Path.GetFileName(textPath)}";
+
+        if (IsMarkdownFile(textPath))
+        {
+            PreviewText.FontFamily = new FontFamily("Consolas");
+        }
+
+        try
+        {
+            PreviewText.Text = File.ReadAllText(textPath);
+            var fileName = Path.GetFileName(textPath);
+            StatusText.Text = PreviewText.Text.Length == 0
+                ? $"{fileName} (empty file)"
+                : fileName;
+        }
+        catch (Exception)
+        {
+            StatusText.Text = "The text file could not be read.";
+        }
+    }
+
+    private void SetInitialTextWindowSize()
+    {
+        var workArea = SystemParameters.WorkArea;
+        var maximumWidth = Math.Max(MinimumWindowWidth, workArea.Width * MaximumScreenFraction);
+        var maximumHeight = Math.Max(MinimumWindowHeight, workArea.Height * MaximumScreenFraction);
+        Width = Math.Clamp(DefaultTextWindowWidth, MinimumWindowWidth, maximumWidth);
+        Height = Math.Clamp(DefaultTextWindowHeight, MinimumWindowHeight, maximumHeight);
+    }
+
+    private void SetInitialImageWindowSize((int PixelWidth, int PixelHeight, Rotation Rotation) imageInfo, double scale)
     {
         var (maximumImageWidth, maximumImageHeight) = GetMaximumImageSize();
         var imageWidth = imageInfo.PixelWidth * scale;
@@ -128,6 +172,18 @@ public partial class MainWindow : Window
         return string.Equals(Path.GetExtension(path), ".webp", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsTextPreviewFile(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return string.Equals(extension, ".txt", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsMarkdownFile(string path)
+    {
+        return string.Equals(Path.GetExtension(path), ".md", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static (int PixelWidth, int PixelHeight, Rotation Rotation) ReadImageInfo(string imagePath)
     {
         var decoder = BitmapDecoder.Create(
@@ -156,7 +212,7 @@ public partial class MainWindow : Window
 
     internal void CopyFileToClipboard()
     {
-        if (_imagePath is null)
+        if (_filePath is null)
         {
             return;
         }
@@ -165,10 +221,10 @@ public partial class MainWindow : Window
         {
             var files = new StringCollection
             {
-                _imagePath
+                _filePath
             };
             Clipboard.SetFileDropList(files);
-            StatusText.Text = $"Copied {Path.GetFileName(_imagePath)}";
+            StatusText.Text = $"Copied {Path.GetFileName(_filePath)}";
         }
         catch (Exception)
         {

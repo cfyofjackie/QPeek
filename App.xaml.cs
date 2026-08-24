@@ -52,7 +52,7 @@ public partial class App : Application
         }
 
         _isOpeningPreview = true;
-        Dispatcher.BeginInvoke(() => OpenSelectedExplorerImage(foregroundWindow));
+        Dispatcher.BeginInvoke(() => OpenSelectedExplorerFile(foregroundWindow));
         return true;
     }
 
@@ -97,17 +97,17 @@ public partial class App : Application
         return true;
     }
 
-    private void OpenSelectedExplorerImage(nint explorerWindowHandle)
+    private void OpenSelectedExplorerFile(nint explorerWindowHandle)
     {
         _isOpeningPreview = false;
 
-        var imagePath = GetSelectedExplorerImageFilePath(explorerWindowHandle);
-        if (imagePath is null)
+        var filePath = GetSelectedExplorerFilePath(explorerWindowHandle);
+        if (filePath is null)
         {
             return;
         }
 
-        _previewWindow = new MainWindow(imagePath);
+        _previewWindow = new MainWindow(filePath);
         var previewWindow = _previewWindow;
         ApplySavedPreviewWindowPosition(previewWindow);
         _previewExplorerWindowHandle = explorerWindowHandle;
@@ -258,7 +258,7 @@ public partial class App : Application
         return string.Equals(process.ProcessName, "explorer", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string? GetSelectedExplorerImageFilePath(nint explorerWindowHandle)
+    private static string? GetSelectedExplorerFilePath(nint explorerWindowHandle)
     {
         var shellType = Type.GetTypeFromProgID("Shell.Application");
         if (shellType is null)
@@ -283,7 +283,7 @@ public partial class App : Application
                 for (var itemIndex = 0; itemIndex < selectedItems.Count; itemIndex++)
                 {
                     var selectedPath = (string?)selectedItems.Item(itemIndex).Path;
-                    if (IsSupportedImage(selectedPath))
+                    if (IsSupportedPreviewFile(selectedPath))
                     {
                         return selectedPath;
                     }
@@ -298,13 +298,15 @@ public partial class App : Application
         return null;
     }
 
-    private static bool IsSupportedImage(string? path)
+    private static bool IsSupportedPreviewFile(string? path)
     {
         var extension = Path.GetExtension(path);
         return string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(extension, ".webp", StringComparison.OrdinalIgnoreCase);
+               string.Equals(extension, ".webp", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(extension, ".txt", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase);
     }
 
     [DllImport("user32.dll")]
