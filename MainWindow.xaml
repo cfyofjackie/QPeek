@@ -6,7 +6,7 @@
         MinHeight="240"
         WindowStartupLocation="CenterScreen"
         KeyDown="Window_KeyDown">
-    <Grid>
+    <Grid x:Name="PreviewContent">
         <Grid.RowDefinitions>
             <RowDefinition />
             <RowDefinition Height="Auto" />

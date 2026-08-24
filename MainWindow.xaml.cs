@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Specialized;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 
 namespace QuickLook;
@@ -17,7 +19,14 @@ public partial class MainWindow : Window
     private const double MaximumScreenFraction = 0.8;
     private const double DefaultTextWindowWidth = 800;
     private const double DefaultTextWindowHeight = 600;
-    private readonly string? _filePath;
+    private const int PreviewFadeOutMilliseconds = 60;
+    private const int PreviewFadeInMilliseconds = 160;
+    private string? _filePath;
+    private string[] _previewFilePaths = [];
+    private int _currentPreviewFileIndex = -1;
+    private int _requestedPreviewFileIndex = -1;
+    private bool _isPreviewTransitioning;
+    private Rect? _animatedWindowBounds;
 
     public MainWindow(string? filePath)
     {
@@ -37,27 +46,75 @@ public partial class MainWindow : Window
 
         _filePath = Path.GetFullPath(filePath);
 
+        if (!IsSupportedPreviewFile(filePath))
+        {
+            StatusText.Text = "This file type is not supported.";
+            return;
+        }
+
+        InitializePreviewNavigation(filePath);
+        ShowPreview(filePath);
+    }
+
+    private void InitializePreviewNavigation(string filePath)
+    {
+        var fullFilePath = Path.GetFullPath(filePath);
+        var directoryPath = Path.GetDirectoryName(fullFilePath);
+        if (directoryPath is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _previewFilePaths = Directory
+                .EnumerateFiles(directoryPath)
+                .Where(IsSupportedPreviewFile)
+                .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            _currentPreviewFileIndex = Array.FindIndex(
+                _previewFilePaths,
+                path => string.Equals(path, fullFilePath, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception)
+        {
+            // Folder navigation is optional; the selected file can still open.
+        }
+
+        if (_currentPreviewFileIndex < 0)
+        {
+            _previewFilePaths = [fullFilePath];
+            _currentPreviewFileIndex = 0;
+        }
+
+        _requestedPreviewFileIndex = _currentPreviewFileIndex;
+    }
+
+    private void ShowPreview(string filePath)
+    {
         if (IsTextPreviewFile(filePath))
         {
             ShowTextPreview(filePath);
             return;
         }
 
-        if (!IsSupportedImage(filePath))
-        {
-            StatusText.Text = "This file type is not supported.";
-            return;
-        }
+        ShowImagePreview(filePath);
+    }
 
-        BitmapImage image;
+    private void ShowImagePreview(string imagePath)
+    {
+        BitmapImage? image = null;
+        var targetSize = (Width, Height);
+        string? errorMessage = null;
+
         try
         {
-            var imageInfo = ReadImageInfo(filePath);
+            var imageInfo = ReadImageInfo(imagePath);
             var decodeScale = GetDecodeScale(imageInfo);
 
             image = new BitmapImage();
             image.BeginInit();
-            image.UriSource = new Uri(Path.GetFullPath(filePath));
+            image.UriSource = new Uri(Path.GetFullPath(imagePath));
             image.CacheOption = BitmapCacheOption.OnLoad;
             image.Rotation = imageInfo.Rotation;
             if (decodeScale < 1)
@@ -66,60 +123,240 @@ public partial class MainWindow : Window
             }
             image.EndInit();
 
-            SetInitialImageWindowSize(imageInfo, decodeScale);
+            targetSize = GetInitialImageWindowSize(imageInfo, decodeScale);
         }
-        catch (Exception) when (IsWebp(filePath))
+        catch (Exception) when (IsWebp(imagePath))
         {
-            StatusText.Text = "WEBP preview requires a Windows WebP image codec.";
-            return;
+            errorMessage = "WEBP preview requires a Windows WebP image codec.";
         }
         catch (Exception)
         {
-            StatusText.Text = "The image could not be decoded.";
+            errorMessage = "The image could not be decoded.";
+        }
+
+        if (image is not null)
+        {
+            SetPreviewWindowSize(targetSize.Width, targetSize.Height);
+        }
+
+        _filePath = Path.GetFullPath(imagePath);
+        PreviewText.Visibility = Visibility.Collapsed;
+        PreviewText.Text = string.Empty;
+        PreviewImage.Visibility = Visibility.Visible;
+        PreviewImage.Source = image;
+        Title = $"Windows Quick Preview - {Path.GetFileName(imagePath)}";
+
+        if (image is null)
+        {
+            StatusText.Text = errorMessage;
             return;
         }
 
-        PreviewImage.Source = image;
-        Title = $"Windows Quick Preview - {Path.GetFileName(filePath)}";
-        StatusText.Text = Path.GetFileName(filePath);
+        StatusText.Text = Path.GetFileName(imagePath);
+    }
+
+    private void NavigatePreview(int offset)
+    {
+        var targetIndex = _requestedPreviewFileIndex + offset;
+        if (_requestedPreviewFileIndex < 0 || targetIndex < 0 || targetIndex >= _previewFilePaths.Length)
+        {
+            return;
+        }
+
+        _requestedPreviewFileIndex = targetIndex;
+        ApplyRequestedPreview();
+    }
+
+    private void ApplyRequestedPreview()
+    {
+        if (_isPreviewTransitioning ||
+            _requestedPreviewFileIndex < 0 ||
+            _requestedPreviewFileIndex == _currentPreviewFileIndex)
+        {
+            return;
+        }
+
+        var currentPath = _previewFilePaths[_currentPreviewFileIndex];
+        var requestedPath = _previewFilePaths[_requestedPreviewFileIndex];
+        if (IsTextPreviewFile(currentPath) == IsTextPreviewFile(requestedPath))
+        {
+            _currentPreviewFileIndex = _requestedPreviewFileIndex;
+            ShowPreview(requestedPath);
+            return;
+        }
+
+        BeginCrossTypeTransition();
+    }
+
+    private void BeginCrossTypeTransition()
+    {
+        _isPreviewTransitioning = true;
+        var fadeOut = new DoubleAnimation(
+            PreviewContent.Opacity,
+            0,
+            TimeSpan.FromMilliseconds(PreviewFadeOutMilliseconds))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+        };
+
+        fadeOut.Completed += (_, _) =>
+        {
+            if (!IsVisible)
+            {
+                return;
+            }
+
+            _currentPreviewFileIndex = _requestedPreviewFileIndex;
+            ShowPreview(_previewFilePaths[_currentPreviewFileIndex]);
+
+            var fadeIn = new DoubleAnimation(
+                0,
+                1,
+                TimeSpan.FromMilliseconds(PreviewFadeInMilliseconds))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            fadeIn.Completed += (_, _) =>
+            {
+                if (!IsVisible)
+                {
+                    return;
+                }
+
+                FinishPreviewWindowAnimation();
+                PreviewContent.BeginAnimation(OpacityProperty, null);
+                PreviewContent.Opacity = 1;
+                _isPreviewTransitioning = false;
+                ApplyRequestedPreview();
+            };
+            PreviewContent.BeginAnimation(OpacityProperty, fadeIn);
+        };
+
+        PreviewContent.BeginAnimation(OpacityProperty, fadeOut);
     }
 
     private void ShowTextPreview(string textPath)
     {
-        SetInitialTextWindowSize();
-        PreviewImage.Visibility = Visibility.Collapsed;
-        PreviewText.Visibility = Visibility.Visible;
-        Title = $"Windows Quick Preview - {Path.GetFileName(textPath)}";
-
-        if (IsMarkdownFile(textPath))
-        {
-            PreviewText.FontFamily = new FontFamily("Consolas");
-        }
-
+        string? text = null;
+        string? errorMessage = null;
         try
         {
-            PreviewText.Text = File.ReadAllText(textPath);
-            var fileName = Path.GetFileName(textPath);
-            StatusText.Text = PreviewText.Text.Length == 0
-                ? $"{fileName} (empty file)"
-                : fileName;
+            text = File.ReadAllText(textPath);
         }
         catch (Exception)
         {
-            StatusText.Text = "The text file could not be read.";
+            errorMessage = "The text file could not be read.";
+        }
+
+        var targetSize = GetInitialTextWindowSize();
+        SetPreviewWindowSize(targetSize.Width, targetSize.Height);
+        _filePath = Path.GetFullPath(textPath);
+        PreviewImage.Visibility = Visibility.Collapsed;
+        PreviewImage.Source = null;
+        PreviewText.Visibility = Visibility.Visible;
+        PreviewText.Text = text ?? string.Empty;
+        PreviewText.FontFamily = IsMarkdownFile(textPath)
+            ? new FontFamily("Consolas")
+            : new FontFamily("Segoe UI");
+        Title = $"Windows Quick Preview - {Path.GetFileName(textPath)}";
+
+        if (text is not null)
+        {
+            var fileName = Path.GetFileName(textPath);
+            StatusText.Text = text.Length == 0
+                ? $"{fileName} (empty file)"
+                : fileName;
+        }
+        else
+        {
+            StatusText.Text = errorMessage;
         }
     }
 
-    private void SetInitialTextWindowSize()
+    private void SetPreviewWindowSize(double width, double height)
+    {
+        if (!IsLoaded)
+        {
+            Width = width;
+            Height = height;
+            return;
+        }
+
+        var centerX = Left + ActualWidth / 2;
+        var centerY = Top + ActualHeight / 2;
+
+        if (double.IsFinite(centerX) && double.IsFinite(centerY))
+        {
+            var targetBounds = new Rect(
+                centerX - width / 2,
+                centerY - height / 2,
+                width,
+                height);
+
+            if (_isPreviewTransitioning)
+            {
+                AnimatePreviewWindow(targetBounds);
+                return;
+            }
+
+            Left = targetBounds.Left;
+            Top = targetBounds.Top;
+        }
+
+        Width = width;
+        Height = height;
+    }
+
+    private void AnimatePreviewWindow(Rect targetBounds)
+    {
+        _animatedWindowBounds = targetBounds;
+        var duration = TimeSpan.FromMilliseconds(PreviewFadeInMilliseconds);
+
+        BeginAnimation(LeftProperty, CreateWindowAnimation(Left, targetBounds.Left, duration));
+        BeginAnimation(TopProperty, CreateWindowAnimation(Top, targetBounds.Top, duration));
+        BeginAnimation(WidthProperty, CreateWindowAnimation(ActualWidth, targetBounds.Width, duration));
+        BeginAnimation(HeightProperty, CreateWindowAnimation(ActualHeight, targetBounds.Height, duration));
+    }
+
+    private static DoubleAnimation CreateWindowAnimation(double from, double to, TimeSpan duration)
+    {
+        return new DoubleAnimation(from, to, duration)
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+        };
+    }
+
+    private void FinishPreviewWindowAnimation()
+    {
+        if (_animatedWindowBounds is not Rect targetBounds)
+        {
+            return;
+        }
+
+        Left = targetBounds.Left;
+        Top = targetBounds.Top;
+        Width = targetBounds.Width;
+        Height = targetBounds.Height;
+        BeginAnimation(LeftProperty, null);
+        BeginAnimation(TopProperty, null);
+        BeginAnimation(WidthProperty, null);
+        BeginAnimation(HeightProperty, null);
+        _animatedWindowBounds = null;
+    }
+
+    private static (double Width, double Height) GetInitialTextWindowSize()
     {
         var workArea = SystemParameters.WorkArea;
         var maximumWidth = Math.Max(MinimumWindowWidth, workArea.Width * MaximumScreenFraction);
         var maximumHeight = Math.Max(MinimumWindowHeight, workArea.Height * MaximumScreenFraction);
-        Width = Math.Clamp(DefaultTextWindowWidth, MinimumWindowWidth, maximumWidth);
-        Height = Math.Clamp(DefaultTextWindowHeight, MinimumWindowHeight, maximumHeight);
+        return (
+            Math.Clamp(DefaultTextWindowWidth, MinimumWindowWidth, maximumWidth),
+            Math.Clamp(DefaultTextWindowHeight, MinimumWindowHeight, maximumHeight));
     }
 
-    private void SetInitialImageWindowSize((int PixelWidth, int PixelHeight, Rotation Rotation) imageInfo, double scale)
+    private static (double Width, double Height) GetInitialImageWindowSize(
+        (int PixelWidth, int PixelHeight, Rotation Rotation) imageInfo,
+        double scale)
     {
         var (maximumImageWidth, maximumImageHeight) = GetMaximumImageSize();
         var imageWidth = imageInfo.PixelWidth * scale;
@@ -130,8 +367,9 @@ public partial class MainWindow : Window
             (imageWidth, imageHeight) = (imageHeight, imageWidth);
         }
 
-        Width = Math.Clamp(imageWidth + WindowPadding, MinimumWindowWidth, maximumImageWidth + WindowPadding);
-        Height = Math.Clamp(imageHeight + WindowPadding + StatusTextHeight, MinimumWindowHeight, maximumImageHeight + WindowPadding + StatusTextHeight);
+        return (
+            Math.Clamp(imageWidth + WindowPadding, MinimumWindowWidth, maximumImageWidth + WindowPadding),
+            Math.Clamp(imageHeight + WindowPadding + StatusTextHeight, MinimumWindowHeight, maximumImageHeight + WindowPadding + StatusTextHeight));
     }
 
     private static double GetDecodeScale((int PixelWidth, int PixelHeight, Rotation Rotation) imageInfo)
@@ -165,6 +403,11 @@ public partial class MainWindow : Window
                string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(extension, ".webp", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSupportedPreviewFile(string path)
+    {
+        return IsSupportedImage(path) || IsTextPreviewFile(path);
     }
 
     private static bool IsWebp(string path)
@@ -204,9 +447,20 @@ public partial class MainWindow : Window
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape)
+        switch (e.Key)
         {
-            Close();
+            case Key.Escape:
+                Close();
+                e.Handled = true;
+                break;
+            case Key.Left:
+                NavigatePreview(-1);
+                e.Handled = true;
+                break;
+            case Key.Right:
+                NavigatePreview(1);
+                e.Handled = true;
+                break;
         }
     }
 
