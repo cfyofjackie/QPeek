@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private int _requestedPreviewFileIndex = -1;
     private bool _isPreviewTransitioning;
     private Rect? _animatedWindowBounds;
+    private Point? _transitionCenter;
 
     public MainWindow(string? filePath)
     {
@@ -191,6 +192,7 @@ public partial class MainWindow : Window
     private void BeginCrossTypeTransition()
     {
         _isPreviewTransitioning = true;
+        _transitionCenter = GetCurrentWindowCenter();
         var fadeOut = new DoubleAnimation(
             PreviewContent.Opacity,
             0,
@@ -209,30 +211,38 @@ public partial class MainWindow : Window
             _currentPreviewFileIndex = _requestedPreviewFileIndex;
             ShowPreview(_previewFilePaths[_currentPreviewFileIndex]);
 
-            var fadeIn = new DoubleAnimation(
-                0,
-                1,
-                TimeSpan.FromMilliseconds(PreviewFadeInMilliseconds))
+            if (_animatedWindowBounds is null)
             {
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-            };
-            fadeIn.Completed += (_, _) =>
-            {
-                if (!IsVisible)
-                {
-                    return;
-                }
-
-                FinishPreviewWindowAnimation();
-                PreviewContent.BeginAnimation(OpacityProperty, null);
-                PreviewContent.Opacity = 1;
-                _isPreviewTransitioning = false;
-                ApplyRequestedPreview();
-            };
-            PreviewContent.BeginAnimation(OpacityProperty, fadeIn);
+                BeginPreviewFadeIn();
+            }
         };
 
         PreviewContent.BeginAnimation(OpacityProperty, fadeOut);
+    }
+
+    private void BeginPreviewFadeIn()
+    {
+        var fadeIn = new DoubleAnimation(
+            0,
+            1,
+            TimeSpan.FromMilliseconds(PreviewFadeInMilliseconds))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        fadeIn.Completed += (_, _) =>
+        {
+            if (!IsVisible)
+            {
+                return;
+            }
+
+            PreviewContent.BeginAnimation(OpacityProperty, null);
+            PreviewContent.Opacity = 1;
+            _isPreviewTransitioning = false;
+            _transitionCenter = null;
+            ApplyRequestedPreview();
+        };
+        PreviewContent.BeginAnimation(OpacityProperty, fadeIn);
     }
 
     private void ShowTextPreview(string textPath)
@@ -282,16 +292,15 @@ public partial class MainWindow : Window
             return;
         }
 
-        var centerX = Left + ActualWidth / 2;
-        var centerY = Top + ActualHeight / 2;
+        var center = _transitionCenter ?? GetCurrentWindowCenter();
 
-        if (double.IsFinite(centerX) && double.IsFinite(centerY))
+        if (double.IsFinite(center.X) && double.IsFinite(center.Y))
         {
-            var targetBounds = new Rect(
-                centerX - width / 2,
-                centerY - height / 2,
+            var targetBounds = KeepPreviewWindowVisible(new Rect(
+                center.X - width / 2,
+                center.Y - height / 2,
                 width,
-                height);
+                height));
 
             if (_isPreviewTransitioning)
             {
@@ -311,11 +320,22 @@ public partial class MainWindow : Window
     {
         _animatedWindowBounds = targetBounds;
         var duration = TimeSpan.FromMilliseconds(PreviewFadeInMilliseconds);
+        var heightAnimation = CreateWindowAnimation(ActualHeight, targetBounds.Height, duration);
+        heightAnimation.Completed += (_, _) =>
+        {
+            if (!IsVisible)
+            {
+                return;
+            }
+
+            FinishPreviewWindowAnimation();
+            BeginPreviewFadeIn();
+        };
 
         BeginAnimation(LeftProperty, CreateWindowAnimation(Left, targetBounds.Left, duration));
         BeginAnimation(TopProperty, CreateWindowAnimation(Top, targetBounds.Top, duration));
         BeginAnimation(WidthProperty, CreateWindowAnimation(ActualWidth, targetBounds.Width, duration));
-        BeginAnimation(HeightProperty, CreateWindowAnimation(ActualHeight, targetBounds.Height, duration));
+        BeginAnimation(HeightProperty, heightAnimation);
     }
 
     private static DoubleAnimation CreateWindowAnimation(double from, double to, TimeSpan duration)
@@ -333,15 +353,44 @@ public partial class MainWindow : Window
             return;
         }
 
-        Left = targetBounds.Left;
-        Top = targetBounds.Top;
-        Width = targetBounds.Width;
-        Height = targetBounds.Height;
         BeginAnimation(LeftProperty, null);
         BeginAnimation(TopProperty, null);
         BeginAnimation(WidthProperty, null);
         BeginAnimation(HeightProperty, null);
+        Left = targetBounds.Left;
+        Top = targetBounds.Top;
+        Width = targetBounds.Width;
+        Height = targetBounds.Height;
         _animatedWindowBounds = null;
+    }
+
+    private Point GetCurrentWindowCenter()
+    {
+        var width = double.IsFinite(Width) ? Width : ActualWidth;
+        var height = double.IsFinite(Height) ? Height : ActualHeight;
+        return new Point(Left + width / 2, Top + height / 2);
+    }
+
+    private static Rect KeepPreviewWindowVisible(Rect bounds)
+    {
+        const double minimumVisibleSize = 50;
+        var virtualScreenRight = SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth;
+        var virtualScreenBottom = SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight;
+        var left = Math.Clamp(
+            bounds.Left,
+            SystemParameters.VirtualScreenLeft - bounds.Width + minimumVisibleSize,
+            virtualScreenRight - minimumVisibleSize);
+        var top = Math.Clamp(
+            bounds.Top,
+            SystemParameters.VirtualScreenTop - bounds.Height + minimumVisibleSize,
+            virtualScreenBottom - minimumVisibleSize);
+        return new Rect(left, top, bounds.Width, bounds.Height);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        FinishPreviewWindowAnimation();
+        base.OnClosed(e);
     }
 
     private static (double Width, double Height) GetInitialTextWindowSize()
