@@ -29,7 +29,9 @@ public partial class MainWindow : Window
     private Rect? _animatedWindowBounds;
     private Point? _transitionCenter;
 
-    public MainWindow(string? filePath)
+    public event Action<string>? PreviewFileChanged;
+
+    public MainWindow(string? filePath, string[]? previewFilePaths = null)
     {
         InitializeComponent();
 
@@ -53,11 +55,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        InitializePreviewNavigation(filePath);
+        InitializePreviewNavigation(filePath, previewFilePaths);
         ShowPreview(filePath);
     }
 
-    private void InitializePreviewNavigation(string filePath)
+    private void InitializePreviewNavigation(string filePath, string[]? explorerViewFilePaths)
     {
         var fullFilePath = Path.GetFullPath(filePath);
         var directoryPath = Path.GetDirectoryName(fullFilePath);
@@ -66,20 +68,36 @@ public partial class MainWindow : Window
             return;
         }
 
-        try
+        if (explorerViewFilePaths is { Length: > 0 })
         {
-            _previewFilePaths = Directory
-                .EnumerateFiles(directoryPath)
+            _previewFilePaths = explorerViewFilePaths
+                .Where(File.Exists)
                 .Where(IsSupportedPreviewFile)
-                .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                .Select(Path.GetFullPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             _currentPreviewFileIndex = Array.FindIndex(
                 _previewFilePaths,
                 path => string.Equals(path, fullFilePath, StringComparison.OrdinalIgnoreCase));
         }
-        catch (Exception)
+
+        if (_currentPreviewFileIndex < 0)
         {
-            // Folder navigation is optional; the selected file can still open.
+            try
+            {
+                _previewFilePaths = Directory
+                    .EnumerateFiles(directoryPath)
+                    .Where(IsSupportedPreviewFile)
+                    .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                _currentPreviewFileIndex = Array.FindIndex(
+                    _previewFilePaths,
+                    path => string.Equals(path, fullFilePath, StringComparison.OrdinalIgnoreCase));
+            }
+            catch (Exception)
+            {
+                // Folder navigation is optional; the selected file can still open.
+            }
         }
 
         if (_currentPreviewFileIndex < 0)
@@ -96,10 +114,13 @@ public partial class MainWindow : Window
         if (IsTextPreviewFile(filePath))
         {
             ShowTextPreview(filePath);
-            return;
+        }
+        else
+        {
+            ShowImagePreview(filePath);
         }
 
-        ShowImagePreview(filePath);
+        PreviewFileChanged?.Invoke(Path.GetFullPath(filePath));
     }
 
     private void ShowImagePreview(string imagePath)

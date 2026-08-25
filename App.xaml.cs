@@ -11,6 +11,7 @@ namespace QuickLook;
 public partial class App : Application
 {
     private const string WindowPositionFormat = "center-v1";
+    private const int ExplorerSelectionFlags = 1 | 4 | 8 | 16;
     private GlobalKeyboardHook? _keyboardHook;
     private MainWindow? _previewWindow;
     private bool _isOpeningPreview;
@@ -107,8 +108,11 @@ public partial class App : Application
             return;
         }
 
-        _previewWindow = new MainWindow(filePath);
+        var previewFilePaths = ExplorerViewOrder.GetFilePaths(explorerWindowHandle);
+        _previewWindow = new MainWindow(filePath, previewFilePaths);
         var previewWindow = _previewWindow;
+        previewWindow.PreviewFileChanged += selectedPath =>
+            SelectExplorerFile(explorerWindowHandle, selectedPath);
         ApplySavedPreviewWindowPosition(previewWindow);
         _previewExplorerWindowHandle = explorerWindowHandle;
         previewWindow.Closed += (_, _) =>
@@ -296,6 +300,44 @@ public partial class App : Application
         }
 
         return null;
+    }
+
+    private static void SelectExplorerFile(nint explorerWindowHandle, string filePath)
+    {
+        var shellType = Type.GetTypeFromProgID("Shell.Application");
+        if (shellType is null)
+        {
+            return;
+        }
+
+        dynamic shell = Activator.CreateInstance(shellType)!;
+        dynamic windows = shell.Windows();
+
+        for (var index = 0; index < windows.Count; index++)
+        {
+            try
+            {
+                dynamic explorerWindow = windows.Item(index);
+                if ((nint)explorerWindow.HWND != explorerWindowHandle)
+                {
+                    continue;
+                }
+
+                dynamic folderView = explorerWindow.Document;
+                dynamic folderItem = folderView.Folder.ParseName(Path.GetFileName(filePath));
+                if (folderItem is not null)
+                {
+                    folderView.SelectItem(folderItem, ExplorerSelectionFlags);
+                }
+
+                return;
+            }
+            catch
+            {
+                // Explorer can close or change folders while the preview is open.
+                return;
+            }
+        }
     }
 
     private static bool IsSupportedPreviewFile(string? path)
