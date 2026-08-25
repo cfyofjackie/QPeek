@@ -1,4 +1,4 @@
-# Windows Quick Preview
+# QPeek
 
 ## Project Idea
 

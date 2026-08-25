@@ -3,15 +3,24 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Interop;
+using Drawing = System.Drawing;
+using Forms = System.Windows.Forms;
 
 namespace QuickLook;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
+    private const string SingleInstanceMutexName = @"Local\QPeek.SingleInstance";
     private const string WindowPositionFormat = "center-v1";
     private const int ExplorerSelectionFlags = 1 | 4 | 8 | 16;
+    private Mutex? _singleInstanceMutex;
+    private bool _ownsSingleInstanceMutex;
+    private Forms.NotifyIcon? _trayIcon;
+    private Forms.ContextMenuStrip? _trayMenu;
+    private Drawing.Icon? _applicationIcon;
     private GlobalKeyboardHook? _keyboardHook;
     private MainWindow? _previewWindow;
     private bool _isOpeningPreview;
@@ -19,6 +28,19 @@ public partial class App : Application
 
     private void App_Startup(object sender, StartupEventArgs e)
     {
+        _singleInstanceMutex = new Mutex(
+            initiallyOwned: true,
+            SingleInstanceMutexName,
+            out _ownsSingleInstanceMutex);
+        if (!_ownsSingleInstanceMutex)
+        {
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
+            Shutdown();
+            return;
+        }
+
+        CreateTrayIcon();
         _keyboardHook = new GlobalKeyboardHook
         {
             SpacePressed = HandleSpacePressed,
@@ -31,6 +53,44 @@ public partial class App : Application
     private void App_Exit(object sender, ExitEventArgs e)
     {
         _keyboardHook?.Dispose();
+
+        if (_trayIcon is not null)
+        {
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+        }
+
+        _trayMenu?.Dispose();
+        _applicationIcon?.Dispose();
+
+        if (_ownsSingleInstanceMutex)
+        {
+            _singleInstanceMutex?.ReleaseMutex();
+        }
+
+        _singleInstanceMutex?.Dispose();
+    }
+
+    private void CreateTrayIcon()
+    {
+        var exitMenuItem = new Forms.ToolStripMenuItem("Exit");
+        exitMenuItem.Click += (_, _) => Shutdown();
+
+        _trayMenu = new Forms.ContextMenuStrip();
+        _trayMenu.Items.Add(exitMenuItem);
+
+        if (Environment.ProcessPath is string processPath)
+        {
+            _applicationIcon = Drawing.Icon.ExtractAssociatedIcon(processPath);
+        }
+
+        _trayIcon = new Forms.NotifyIcon
+        {
+            ContextMenuStrip = _trayMenu,
+            Icon = _applicationIcon ?? Drawing.SystemIcons.Application,
+            Text = "QPeek",
+            Visible = true
+        };
     }
 
     private bool HandleSpacePressed()
@@ -227,7 +287,7 @@ public partial class App : Application
     {
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "QuickLook",
+            "QPeek",
             "window-position.txt");
     }
 

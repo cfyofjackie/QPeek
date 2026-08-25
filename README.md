@@ -1,4 +1,4 @@
-# Windows Quick Preview
+# QPeek
 
 一个学习型 Windows 文件快速预览工具，灵感来自 macOS Quick Look。
 

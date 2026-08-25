@@ -3,9 +3,13 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>QPeek</AssemblyName>
+    <RootNamespace>QuickLook</RootNamespace>
+    <ApplicationIcon>icon\outputs\QPeek.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
 </Project>

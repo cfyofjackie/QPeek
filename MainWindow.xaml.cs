@@ -27,7 +27,7 @@ public partial class MainWindow : Window
     private int _requestedPreviewFileIndex = -1;
     private bool _isPreviewTransitioning;
     private Rect? _animatedWindowBounds;
-    private Point? _transitionCenter;
+    private System.Windows.Point? _transitionCenter;
 
     public event Action<string>? PreviewFileChanged;
 
@@ -166,7 +166,7 @@ public partial class MainWindow : Window
         PreviewText.Text = string.Empty;
         PreviewImage.Visibility = Visibility.Visible;
         PreviewImage.Source = image;
-        Title = $"Windows Quick Preview - {Path.GetFileName(imagePath)}";
+        Title = $"QPeek - {Path.GetFileName(imagePath)}";
 
         if (image is null)
         {
@@ -287,9 +287,9 @@ public partial class MainWindow : Window
         PreviewText.Visibility = Visibility.Visible;
         PreviewText.Text = text ?? string.Empty;
         PreviewText.FontFamily = IsMarkdownFile(textPath)
-            ? new FontFamily("Consolas")
-            : new FontFamily("Segoe UI");
-        Title = $"Windows Quick Preview - {Path.GetFileName(textPath)}";
+            ? new System.Windows.Media.FontFamily("Consolas")
+            : new System.Windows.Media.FontFamily("Segoe UI");
+        Title = $"QPeek - {Path.GetFileName(textPath)}";
 
         if (text is not null)
         {
@@ -385,11 +385,11 @@ public partial class MainWindow : Window
         _animatedWindowBounds = null;
     }
 
-    private Point GetCurrentWindowCenter()
+    private System.Windows.Point GetCurrentWindowCenter()
     {
         var width = double.IsFinite(Width) ? Width : ActualWidth;
         var height = double.IsFinite(Height) ? Height : ActualHeight;
-        return new Point(Left + width / 2, Top + height / 2);
+        return new System.Windows.Point(Left + width / 2, Top + height / 2);
     }
 
     private static Rect KeepPreviewWindowVisible(Rect bounds)
@@ -515,7 +515,7 @@ public partial class MainWindow : Window
         });
     }
 
-    private void Window_KeyDown(object sender, KeyEventArgs e)
+    private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         switch (e.Key)
         {
@@ -547,7 +547,7 @@ public partial class MainWindow : Window
             {
                 _filePath
             };
-            Clipboard.SetFileDropList(files);
+            System.Windows.Clipboard.SetFileDropList(files);
             StatusText.Text = $"Copied {Path.GetFileName(_filePath)}";
         }
         catch (Exception)
