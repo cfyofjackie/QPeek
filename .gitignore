@@ -2,3 +2,7 @@
 artifacts/
 bin/
 obj/
+
+# Icon generation work files and visual QA previews
+icon/work/
+icon/outputs/QPeek-tray-preview-dark.png
