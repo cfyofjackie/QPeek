@@ -23,11 +23,9 @@ QPeek 是一个小型 Windows 文件快速预览工具。在 Windows 资源管�
 
 ## 下载与使用
 
-首次公开版本正在准备中。GitHub Release 发布后，可以下载：
+请前往项目的 [GitHub Releases 页面](https://github.com/cfyofjackie/QPeek/releases)，在 `QPeek v0.1.0 Preview` 下展开 **Assets**，然后点击 **QPeek-v0.1.0-preview-win-x64.zip** 下载。
 
-```text
-QPeek-v0.1.0-preview-win-x64.zip
-```
+这里显示的是需要点击下载的附件名称，不是 PowerShell 命令。请不要选择 GitHub 自动生成的 `Source code (zip)`，那里面只有源代码，不能直接运行 QPeek。
 
 该版本面向 Windows 11 x64，并采用 self-contained（自包含）发布，目标电脑不需要预先安装 .NET 10 Desktop Runtime。
 
@@ -110,4 +108,9 @@ dotnet publish --configuration Release --runtime win-x64 --self-contained true
 
 - [SLC.md](SLC.md)：首个可用版本的范围、目标与非目标。
 - [PROGRESS.md](PROGRESS.md)：开发切片、完成记录和后续候选功能。
+- [RELEASE_NOTES.md](RELEASE_NOTES.md)：首次 GitHub Release 可直接使用的版本说明。
 - [AGENTS.md](AGENTS.md)：项目的开发、学习与 Coding Agent 协作原则。
+
+## 开源许可证
+
+QPeek 使用 [MIT License](LICENSE)。你可以使用、学习、修改和分发代码，但需要保留原始版权与许可证声明。
