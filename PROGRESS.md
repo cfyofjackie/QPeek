@@ -192,7 +192,8 @@ V0.2 暂不包含：鼠标滚轮缩放、缩放滑条、旋转、EXIF 信息、�
   - [x] 已更新 README 的当前功能、运行方法、快捷键、已知限制和停止程序的方法。
   - [x] 已准备 `v0.1.0-preview` 的 GitHub Release 说明、附件名称和文件校验值。
   - [x] 仓库已更名为 `QPeek`，并采用 MIT License 开源。
-  - 确认发布包命名与版本号，创建 GitHub Release。
+  - [x] 已确认发布包命名与版本号，创建并验证 `v0.1.0-preview` GitHub Release 草稿。
+  - [ ] 将仓库设为 Public，复核草稿后正式发布 Release。
   - 异机测试稳定后，再录制简短演示视频并发布到 GitHub 或自媒体。
 
 ## V0.6 之后的候选
