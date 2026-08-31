@@ -5,7 +5,7 @@
         MinWidth="320"
         MinHeight="240"
         WindowStartupLocation="CenterScreen"
-        KeyDown="Window_KeyDown">
+        PreviewKeyDown="Window_PreviewKeyDown">
     <Grid x:Name="PreviewContent">
         <Grid.RowDefinitions>
             <RowDefinition />

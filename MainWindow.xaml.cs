@@ -515,7 +515,7 @@ public partial class MainWindow : Window
         });
     }
 
-    private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         switch (e.Key)
         {
@@ -523,11 +523,11 @@ public partial class MainWindow : Window
                 Close();
                 e.Handled = true;
                 break;
-            case Key.Left:
+            case Key.Left when e.KeyboardDevice.Modifiers == ModifierKeys.None:
                 NavigatePreview(-1);
                 e.Handled = true;
                 break;
-            case Key.Right:
+            case Key.Right when e.KeyboardDevice.Modifiers == ModifierKeys.None:
                 NavigatePreview(1);
                 e.Handled = true;
                 break;
