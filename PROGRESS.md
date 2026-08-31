@@ -31,7 +31,7 @@
 
 - [x] 明确开发技术栈：Windows 11、Zed、C#、.NET 10 LTS、WPF 与 `dotnet` CLI。
 - [x] 整理项目文档：README、SLC 与开发协作规则。
-- [x] 将开发约束放入 `AGENTS.md`。
+- [x] 整理本地开发与 Coding Agent 协作约束，不纳入公开仓库。
 - [x] 完成 V0.1 Step 0：最小 WPF 窗口可启动并可用 `Esc` 关闭。
 - [x] 完成 V0.1 Step 1：窗口可显示给定路径的 JPG，并保持图片比例。
 - [x] 完成 V0.1 Step 2：无参数启动时，可读取 Explorer 选中的 JPG 并显示预览。

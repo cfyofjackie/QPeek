@@ -7,3 +7,6 @@ obj/
 icon/work/
 icon/outputs/QPeek-tray-preview-dark.png
 icon.zip
+
+# Local Coding Agent instructions
+AGENTS.md

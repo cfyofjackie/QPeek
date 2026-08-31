@@ -109,7 +109,6 @@ dotnet publish --configuration Release --runtime win-x64 --self-contained true
 - [SLC.md](SLC.md)：首个可用版本的范围、目标与非目标。
 - [PROGRESS.md](PROGRESS.md)：开发切片、完成记录和后续候选功能。
 - [RELEASE_NOTES.md](RELEASE_NOTES.md)：首次 GitHub Release 可直接使用的版本说明。
-- [AGENTS.md](AGENTS.md)：项目的开发、学习与 Coding Agent 协作原则。
 
 ## 开源许可证
 
