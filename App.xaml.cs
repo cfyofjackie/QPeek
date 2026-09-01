@@ -23,6 +23,7 @@ public partial class App : System.Windows.Application
     private Drawing.Icon? _applicationIcon;
     private GlobalKeyboardHook? _keyboardHook;
     private MainWindow? _previewWindow;
+    private nint _previewWindowHandle;
     private bool _isOpeningPreview;
     private nint _previewExplorerWindowHandle;
 
@@ -95,9 +96,15 @@ public partial class App : System.Windows.Application
 
     private bool HandleSpacePressed()
     {
-        if (_previewWindow is not null)
+        var previewWindow = _previewWindow;
+        if (previewWindow is not null)
         {
-            Dispatcher.BeginInvoke(_previewWindow.Close);
+            if (!IsPreviewWindowForeground())
+            {
+                return false;
+            }
+
+            Dispatcher.BeginInvoke(previewWindow.Close);
             return true;
         }
 
@@ -119,12 +126,12 @@ public partial class App : System.Windows.Application
 
     private bool HandleEnterPressed()
     {
-        if (_previewWindow is null)
+        var previewWindow = _previewWindow;
+        if (previewWindow is null || !IsPreviewWindowForeground())
         {
             return false;
         }
 
-        var previewWindow = _previewWindow;
         var explorerWindowHandle = _previewExplorerWindowHandle;
 
         if (Dispatcher.CheckAccess())
@@ -148,12 +155,12 @@ public partial class App : System.Windows.Application
 
     private bool HandleCopyPressed()
     {
-        if (_previewWindow is null)
+        var previewWindow = _previewWindow;
+        if (previewWindow is null || !IsPreviewWindowForeground())
         {
             return false;
         }
 
-        var previewWindow = _previewWindow;
         Dispatcher.BeginInvoke(previewWindow.CopyFileToClipboard);
         return true;
     }
@@ -179,9 +186,11 @@ public partial class App : System.Windows.Application
         {
             SavePreviewWindowPosition(previewWindow);
             _previewWindow = null;
+            _previewWindowHandle = 0;
             _previewExplorerWindowHandle = 0;
         };
         var previewWindowHandle = new WindowInteropHelper(previewWindow).EnsureHandle();
+        _previewWindowHandle = previewWindowHandle;
         var previewThreadId = GetWindowThreadProcessId(previewWindowHandle, out _);
         var explorerThreadId = GetWindowThreadProcessId(explorerWindowHandle, out _);
         var inputThreadsAttached =
@@ -205,6 +214,13 @@ public partial class App : System.Windows.Application
                 AttachThreadInput(previewThreadId, explorerThreadId, false);
             }
         }
+    }
+
+    private bool IsPreviewWindowForeground()
+    {
+        return _previewWindow is not null &&
+            _previewWindowHandle != 0 &&
+            GetForegroundWindow() == _previewWindowHandle;
     }
 
     private static void ApplySavedPreviewWindowPosition(MainWindow previewWindow)
