@@ -37,13 +37,13 @@ public partial class MainWindow : Window
 
         if (string.IsNullOrWhiteSpace(filePath))
         {
-            StatusText.Text = "Select a supported file in Explorer, then run the app.";
+            ShowStatus("Select a supported file in Explorer, then run the app.");
             return;
         }
 
         if (!File.Exists(filePath))
         {
-            StatusText.Text = "The file was not found.";
+            ShowStatus("The file was not found.");
             return;
         }
 
@@ -51,7 +51,7 @@ public partial class MainWindow : Window
 
         if (!IsSupportedPreviewFile(filePath))
         {
-            StatusText.Text = "This file type is not supported.";
+            ShowStatus("This file type is not supported.");
             return;
         }
 
@@ -170,11 +170,11 @@ public partial class MainWindow : Window
 
         if (image is null)
         {
-            StatusText.Text = errorMessage;
+            ShowStatus(errorMessage ?? "The image could not be displayed.");
             return;
         }
 
-        StatusText.Text = Path.GetFileName(imagePath);
+        HideStatus();
     }
 
     private void NavigatePreview(int offset)
@@ -293,14 +293,18 @@ public partial class MainWindow : Window
 
         if (text is not null)
         {
-            var fileName = Path.GetFileName(textPath);
-            StatusText.Text = text.Length == 0
-                ? $"{fileName} (empty file)"
-                : fileName;
+            if (text.Length == 0)
+            {
+                ShowStatus($"{Path.GetFileName(textPath)} (empty file)");
+            }
+            else
+            {
+                HideStatus();
+            }
         }
         else
         {
-            StatusText.Text = errorMessage;
+            ShowStatus(errorMessage ?? "The text file could not be read.");
         }
     }
 
@@ -548,11 +552,23 @@ public partial class MainWindow : Window
                 _filePath
             };
             System.Windows.Clipboard.SetFileDropList(files);
-            StatusText.Text = $"Copied {Path.GetFileName(_filePath)}";
+            ShowStatus($"Copied {Path.GetFileName(_filePath)}");
         }
         catch (Exception)
         {
-            StatusText.Text = "The file could not be copied.";
+            ShowStatus("The file could not be copied.");
         }
+    }
+
+    private void ShowStatus(string message)
+    {
+        StatusText.Text = message;
+        StatusText.Visibility = Visibility.Visible;
+    }
+
+    private void HideStatus()
+    {
+        StatusText.Text = string.Empty;
+        StatusText.Visibility = Visibility.Collapsed;
     }
 }
