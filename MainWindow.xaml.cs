@@ -123,6 +123,32 @@ public partial class MainWindow : Window
         PreviewFileChanged?.Invoke(Path.GetFullPath(filePath));
     }
 
+    internal bool TryShowExplorerSelection(string filePath, string[]? previewFilePaths)
+    {
+        if (_isPreviewTransitioning || !File.Exists(filePath) || !IsSupportedPreviewFile(filePath))
+        {
+            return false;
+        }
+
+        var fullFilePath = Path.GetFullPath(filePath);
+        if (IsPreviewingFile(fullFilePath))
+        {
+            return false;
+        }
+
+        InitializePreviewNavigation(fullFilePath, previewFilePaths);
+        ShowPreview(fullFilePath);
+        return true;
+    }
+
+    internal bool IsPreviewingFile(string filePath)
+    {
+        return string.Equals(
+            _filePath,
+            Path.GetFullPath(filePath),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
     private void ShowImagePreview(string imagePath)
     {
         BitmapImage? image = null;

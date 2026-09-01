@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using Drawing = System.Drawing;
 using Forms = System.Windows.Forms;
 
@@ -16,12 +17,14 @@ public partial class App : System.Windows.Application
     private const string SingleInstanceMutexName = @"Local\QPeek.SingleInstance";
     private const string WindowPositionFormat = "center-v1";
     private const int ExplorerSelectionFlags = 1 | 4 | 8 | 16;
+    private static readonly TimeSpan ExplorerSelectionPollInterval = TimeSpan.FromMilliseconds(250);
     private Mutex? _singleInstanceMutex;
     private bool _ownsSingleInstanceMutex;
     private Forms.NotifyIcon? _trayIcon;
     private Forms.ContextMenuStrip? _trayMenu;
     private Drawing.Icon? _applicationIcon;
     private GlobalKeyboardHook? _keyboardHook;
+    private DispatcherTimer? _explorerSelectionTimer;
     private MainWindow? _previewWindow;
     private nint _previewWindowHandle;
     private bool _isOpeningPreview;
@@ -53,6 +56,7 @@ public partial class App : System.Windows.Application
 
     private void App_Exit(object sender, ExitEventArgs e)
     {
+        StopExplorerSelectionPolling();
         _keyboardHook?.Dispose();
 
         if (_trayIcon is not null)
@@ -99,7 +103,9 @@ public partial class App : System.Windows.Application
         var previewWindow = _previewWindow;
         if (previewWindow is not null)
         {
-            if (!IsPreviewWindowForeground())
+            var activeWindowHandle = GetForegroundWindow();
+            if (activeWindowHandle != _previewWindowHandle &&
+                activeWindowHandle != _previewExplorerWindowHandle)
             {
                 return false;
             }
@@ -184,12 +190,17 @@ public partial class App : System.Windows.Application
         _previewExplorerWindowHandle = explorerWindowHandle;
         previewWindow.Closed += (_, _) =>
         {
+            StopExplorerSelectionPolling();
             SavePreviewWindowPosition(previewWindow);
             _previewWindow = null;
             _previewWindowHandle = 0;
             _previewExplorerWindowHandle = 0;
         };
-        var previewWindowHandle = new WindowInteropHelper(previewWindow).EnsureHandle();
+        var previewWindowInterop = new WindowInteropHelper(previewWindow)
+        {
+            Owner = explorerWindowHandle
+        };
+        var previewWindowHandle = previewWindowInterop.EnsureHandle();
         _previewWindowHandle = previewWindowHandle;
         var previewThreadId = GetWindowThreadProcessId(previewWindowHandle, out _);
         var explorerThreadId = GetWindowThreadProcessId(explorerWindowHandle, out _);
@@ -214,6 +225,49 @@ public partial class App : System.Windows.Application
                 AttachThreadInput(previewThreadId, explorerThreadId, false);
             }
         }
+
+        StartExplorerSelectionPolling();
+    }
+
+    private void StartExplorerSelectionPolling()
+    {
+        StopExplorerSelectionPolling();
+
+        _explorerSelectionTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = ExplorerSelectionPollInterval
+        };
+        _explorerSelectionTimer.Tick += (_, _) => RefreshPreviewFromExplorerSelection();
+        _explorerSelectionTimer.Start();
+    }
+
+    private void StopExplorerSelectionPolling()
+    {
+        _explorerSelectionTimer?.Stop();
+        _explorerSelectionTimer = null;
+    }
+
+    private void RefreshPreviewFromExplorerSelection()
+    {
+        var previewWindow = _previewWindow;
+        var explorerWindowHandle = _previewExplorerWindowHandle;
+        if (previewWindow is null ||
+            explorerWindowHandle == 0 ||
+            GetForegroundWindow() != explorerWindowHandle)
+        {
+            return;
+        }
+
+        var selectedPath = GetSelectedExplorerFilePath(
+            explorerWindowHandle,
+            requireSingleSelection: true);
+        if (selectedPath is null || previewWindow.IsPreviewingFile(selectedPath))
+        {
+            return;
+        }
+
+        var previewFilePaths = ExplorerViewOrder.GetFilePaths(explorerWindowHandle);
+        previewWindow.TryShowExplorerSelection(selectedPath, previewFilePaths);
     }
 
     private bool IsPreviewWindowForeground()
@@ -338,7 +392,9 @@ public partial class App : System.Windows.Application
         return string.Equals(process.ProcessName, "explorer", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string? GetSelectedExplorerFilePath(nint explorerWindowHandle)
+    private static string? GetSelectedExplorerFilePath(
+        nint explorerWindowHandle,
+        bool requireSingleSelection = false)
     {
         var shellType = Type.GetTypeFromProgID("Shell.Application");
         if (shellType is null)
@@ -360,6 +416,11 @@ public partial class App : System.Windows.Application
                 }
 
                 dynamic selectedItems = explorerWindow.Document.SelectedItems();
+                if (requireSingleSelection && selectedItems.Count != 1)
+                {
+                    return null;
+                }
+
                 for (var itemIndex = 0; itemIndex < selectedItems.Count; itemIndex++)
                 {
                     var selectedPath = (string?)selectedItems.Item(itemIndex).Path;
