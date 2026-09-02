@@ -1,12 +1,16 @@
 using System;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using ICSharpCode.AvalonEdit;
+using MdXaml;
 
 namespace QuickLook;
 
@@ -28,12 +32,20 @@ public partial class MainWindow : Window
     private bool _isPreviewTransitioning;
     private Rect? _animatedWindowBounds;
     private System.Windows.Point? _transitionCenter;
+    private readonly Markdown _markdown = new()
+    {
+        HyperlinkCommand = null,
+        OnHyperLinkClicked = OpenMarkdownLink,
+        AssetPathRoot = null,
+        DisabledContextMenu = true
+    };
 
     public event Action<string>? PreviewFileChanged;
 
     public MainWindow(string? filePath, string[]? previewFilePaths = null)
     {
         InitializeComponent();
+        _markdown.DocumentStyle = (Style)FindResource("QPeekMarkdownDocumentStyle");
 
         if (string.IsNullOrWhiteSpace(filePath))
         {
@@ -190,6 +202,9 @@ public partial class MainWindow : Window
         _filePath = Path.GetFullPath(imagePath);
         PreviewText.Visibility = Visibility.Collapsed;
         PreviewText.Text = string.Empty;
+        PreviewMarkdownBackground.Visibility = Visibility.Collapsed;
+        PreviewMarkdown.Visibility = Visibility.Collapsed;
+        PreviewMarkdown.Document = null;
         PreviewImage.Visibility = Visibility.Visible;
         PreviewImage.Source = image;
         Title = $"QPeek - {Path.GetFileName(imagePath)}";
@@ -310,16 +325,16 @@ public partial class MainWindow : Window
         _filePath = Path.GetFullPath(textPath);
         PreviewImage.Visibility = Visibility.Collapsed;
         PreviewImage.Source = null;
-        PreviewText.Visibility = Visibility.Visible;
-        PreviewText.Text = text ?? string.Empty;
-        PreviewText.FontFamily = IsMarkdownFile(textPath)
-            ? new System.Windows.Media.FontFamily("Consolas")
-            : new System.Windows.Media.FontFamily("Segoe UI");
+        ShowTextContent(textPath, text, ref errorMessage);
         Title = $"QPeek - {Path.GetFileName(textPath)}";
 
         if (text is not null)
         {
-            if (text.Length == 0)
+            if (errorMessage is not null)
+            {
+                ShowStatus(errorMessage);
+            }
+            else if (text.Length == 0)
             {
                 ShowStatus($"{Path.GetFileName(textPath)} (empty file)");
             }
@@ -331,6 +346,379 @@ public partial class MainWindow : Window
         else
         {
             ShowStatus(errorMessage ?? "The text file could not be read.");
+        }
+    }
+
+    private void ShowTextContent(string textPath, string? text, ref string? errorMessage)
+    {
+        PreviewMarkdownBackground.Visibility = Visibility.Collapsed;
+        PreviewMarkdown.Visibility = Visibility.Collapsed;
+        PreviewMarkdown.Document = null;
+
+        if (text is not null && IsMarkdownFile(textPath))
+        {
+            try
+            {
+                var document = _markdown.Transform(NormalizeMarkdownListIndentation(text));
+                FormatMarkdownTaskLists(document.Blocks);
+                FormatMarkdownCodeBlocks(document.Blocks);
+                PreviewMarkdown.Document = document;
+                PreviewMarkdownBackground.Visibility = Visibility.Visible;
+                PreviewMarkdown.Visibility = Visibility.Visible;
+                PreviewText.Visibility = Visibility.Collapsed;
+                PreviewText.Text = string.Empty;
+                return;
+            }
+            catch (Exception)
+            {
+                errorMessage = "Markdown rendering failed; showing source.";
+            }
+        }
+
+        PreviewText.Visibility = Visibility.Visible;
+        PreviewText.Text = text ?? string.Empty;
+        PreviewText.FontFamily = IsMarkdownFile(textPath)
+            ? new System.Windows.Media.FontFamily("Consolas")
+            : new System.Windows.Media.FontFamily("Segoe UI");
+    }
+
+    private static string NormalizeMarkdownListIndentation(string markdown)
+    {
+        var lines = markdown.Split('\n');
+        char? fenceCharacter = null;
+        var fenceLength = 0;
+        var listIndentationUnit = 0;
+        var isInList = false;
+
+        for (var index = 0; index < lines.Length; index++)
+        {
+            var line = lines[index];
+            if (TryReadMarkdownFence(line, out var currentFenceCharacter, out var currentFenceLength, out var isClosingFence))
+            {
+                if (fenceCharacter is null)
+                {
+                    fenceCharacter = currentFenceCharacter;
+                    fenceLength = currentFenceLength;
+                }
+                else if (currentFenceCharacter == fenceCharacter &&
+                         currentFenceLength >= fenceLength &&
+                         isClosingFence)
+                {
+                    fenceCharacter = null;
+                    fenceLength = 0;
+                }
+
+                continue;
+            }
+
+            if (fenceCharacter is null && TryGetListItemIndentation(line, out var indentation))
+            {
+                if (indentation > 0)
+                {
+                    if (!isInList || listIndentationUnit == 0)
+                    {
+                        listIndentationUnit = indentation;
+                    }
+
+                    if (indentation % listIndentationUnit == 0)
+                    {
+                        var normalizedIndentation = indentation / listIndentationUnit * 4;
+                        lines[index] = new string(' ', normalizedIndentation) + line[indentation..];
+                    }
+                }
+
+                isInList = true;
+                continue;
+            }
+
+            if (fenceCharacter is null &&
+                !string.IsNullOrWhiteSpace(line) &&
+                line[0] is not ' ' and not '\t')
+            {
+                isInList = false;
+                listIndentationUnit = 0;
+            }
+        }
+
+        return string.Join('\n', lines);
+    }
+
+    private static bool TryReadMarkdownFence(
+        string line,
+        out char fenceCharacter,
+        out int fenceLength,
+        out bool isClosingFence)
+    {
+        fenceCharacter = default;
+        fenceLength = 0;
+        isClosingFence = false;
+
+        var leadingSpaces = 0;
+        while (leadingSpaces < line.Length && line[leadingSpaces] == ' ')
+        {
+            leadingSpaces++;
+        }
+
+        if (leadingSpaces > 3 || leadingSpaces >= line.Length ||
+            (line[leadingSpaces] != '`' && line[leadingSpaces] != '~'))
+        {
+            return false;
+        }
+
+        fenceCharacter = line[leadingSpaces];
+        var position = leadingSpaces;
+        while (position < line.Length && line[position] == fenceCharacter)
+        {
+            fenceLength++;
+            position++;
+        }
+
+        if (fenceLength < 3)
+        {
+            return false;
+        }
+
+        isClosingFence = line.AsSpan(position).Trim().IsEmpty;
+        return true;
+    }
+
+    private static bool TryGetListItemIndentation(string line, out int indentation)
+    {
+        indentation = 0;
+        while (indentation < line.Length && line[indentation] == ' ')
+        {
+            indentation++;
+        }
+
+        if (indentation >= line.Length || line[indentation] == '\t')
+        {
+            return false;
+        }
+
+        var markerStart = indentation;
+        if (line[markerStart] is '-' or '+' or '*')
+        {
+            return markerStart + 1 < line.Length && char.IsWhiteSpace(line[markerStart + 1]);
+        }
+
+        var position = markerStart;
+        while (position < line.Length && char.IsDigit(line[position]))
+        {
+            position++;
+        }
+
+        return position > markerStart &&
+               position + 1 < line.Length &&
+               line[position] is '.' or ')' &&
+               char.IsWhiteSpace(line[position + 1]);
+    }
+
+    private static void FormatMarkdownTaskLists(BlockCollection blocks)
+    {
+        foreach (var block in blocks.Cast<Block>().ToArray())
+        {
+            switch (block)
+            {
+                case System.Windows.Documents.List list:
+                    FormatMarkdownTaskList(list);
+                    foreach (var item in list.ListItems.Cast<ListItem>().ToArray())
+                    {
+                        FormatMarkdownTaskLists(item.Blocks);
+                    }
+                    break;
+                case Section section:
+                    FormatMarkdownTaskLists(section.Blocks);
+                    break;
+            }
+        }
+    }
+
+    private static void FormatMarkdownTaskList(System.Windows.Documents.List list)
+    {
+        if (!IsUnorderedList(list.MarkerStyle))
+        {
+            return;
+        }
+
+        if (!list.ListItems.Cast<ListItem>().Any(IsMarkdownTaskListItem))
+        {
+            list.MarkerStyle = TextMarkerStyle.Disc;
+            list.MarkerOffset = 12;
+            return;
+        }
+
+        list.MarkerStyle = TextMarkerStyle.None;
+        list.MarkerOffset = 0;
+
+        foreach (var item in list.ListItems.Cast<ListItem>().ToArray())
+        {
+            if (TryReplaceMarkdownTaskMarker(item))
+            {
+                continue;
+            }
+
+            AddPlainListMarker(item);
+        }
+    }
+
+    private static void FormatMarkdownCodeBlocks(BlockCollection blocks)
+    {
+        foreach (var block in blocks.Cast<Block>().ToArray())
+        {
+            switch (block)
+            {
+                case BlockUIContainer { Tag: "CodeBlock", Child: TextEditor editor }:
+                    editor.FontFamily = new System.Windows.Media.FontFamily("Consolas");
+                    editor.FontSize = 13;
+                    editor.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x24, 0x29, 0x2F));
+                    editor.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xF1, 0xF3, 0xF5));
+                    editor.Padding = new Thickness(14, 10, 14, 10);
+                    editor.BorderThickness = new Thickness(0);
+                    editor.WordWrap = true;
+                    editor.ShowLineNumbers = false;
+                    break;
+                case System.Windows.Documents.List list:
+                    foreach (var item in list.ListItems.Cast<ListItem>().ToArray())
+                    {
+                        FormatMarkdownCodeBlocks(item.Blocks);
+                    }
+                    break;
+                case Section section:
+                    FormatMarkdownCodeBlocks(section.Blocks);
+                    break;
+            }
+        }
+    }
+
+    private static bool IsUnorderedList(TextMarkerStyle markerStyle)
+    {
+        return markerStyle is TextMarkerStyle.Disc or
+               TextMarkerStyle.Circle or
+               TextMarkerStyle.Square or
+               TextMarkerStyle.Box;
+    }
+
+    private static bool IsMarkdownTaskListItem(ListItem item)
+    {
+        return TryReadMarkdownTaskMarker(item, out _, out _, out _);
+    }
+
+    private static bool TryReplaceMarkdownTaskMarker(ListItem item)
+    {
+        if (!TryReadMarkdownTaskMarker(item, out var paragraph, out var markerRun, out var isChecked))
+        {
+            return false;
+        }
+
+        markerRun.Text = markerRun.Text[3..].TrimStart();
+        var checkbox = new System.Windows.Controls.CheckBox
+        {
+            IsChecked = isChecked,
+            IsHitTestVisible = false,
+            Focusable = false,
+            IsTabStop = false,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 7, 0)
+        };
+        var container = new InlineUIContainer(checkbox)
+        {
+            BaselineAlignment = BaselineAlignment.Center
+        };
+        var firstInline = paragraph.Inlines.FirstInline;
+        if (firstInline is null)
+        {
+            paragraph.Inlines.Add(container);
+        }
+        else
+        {
+            paragraph.Inlines.InsertBefore(firstInline, container);
+        }
+
+        return true;
+    }
+
+    private static bool TryReadMarkdownTaskMarker(
+        ListItem item,
+        out Paragraph paragraph,
+        out Run markerRun,
+        out bool isChecked)
+    {
+        paragraph = null!;
+        markerRun = null!;
+        isChecked = false;
+
+        if (item.Blocks.FirstBlock is not Paragraph firstParagraph ||
+            FindFirstRun(firstParagraph.Inlines) is not Run firstRun ||
+            firstRun.Text.Length < 3 ||
+            firstRun.Text[0] != '[' ||
+            firstRun.Text[2] != ']' ||
+            (firstRun.Text.Length > 3 && !char.IsWhiteSpace(firstRun.Text[3])) ||
+            firstRun.Text[1] is not ('x' or 'X' or ' '))
+        {
+            return false;
+        }
+
+        paragraph = firstParagraph;
+        markerRun = firstRun;
+        isChecked = firstRun.Text[1] is 'x' or 'X';
+        return true;
+    }
+
+    private static Run? FindFirstRun(InlineCollection inlines)
+    {
+        foreach (var inline in inlines)
+        {
+            if (inline is Run run)
+            {
+                return run;
+            }
+
+            if (inline is Span span && FindFirstRun(span.Inlines) is Run nestedRun)
+            {
+                return nestedRun;
+            }
+        }
+
+        return null;
+    }
+
+    private static void AddPlainListMarker(ListItem item)
+    {
+        if (item.Blocks.FirstBlock is not Paragraph paragraph)
+        {
+            return;
+        }
+
+        var marker = new Run("• ")
+        {
+            Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(87, 96, 106))
+        };
+        var firstInline = paragraph.Inlines.FirstInline;
+        if (firstInline is null)
+        {
+            paragraph.Inlines.Add(marker);
+        }
+        else
+        {
+            paragraph.Inlines.InsertBefore(firstInline, marker);
+        }
+    }
+
+    private static void OpenMarkdownLink(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception)
+        {
+            // A broken link or missing browser should not interrupt the preview.
         }
     }
 

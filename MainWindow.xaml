@@ -6,6 +6,121 @@
         MinHeight="240"
         WindowStartupLocation="CenterScreen"
         PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <Style x:Key="QPeekMarkdownDocumentStyle"
+               TargetType="{x:Type FlowDocument}">
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="Foreground" Value="#24292F" />
+            <Setter Property="Background" Value="#FAFAFB" />
+            <Setter Property="TextAlignment" Value="Left" />
+            <Setter Property="PagePadding" Value="18,12,18,20" />
+
+            <Style.Resources>
+                <Style TargetType="{x:Type Section}">
+                    <Style.Triggers>
+                        <Trigger Property="Tag" Value="Blockquote">
+                            <Setter Property="Foreground" Value="#57606A" />
+                            <Setter Property="Margin" Value="0,4,0,14" />
+                            <Setter Property="Padding" Value="10,4" />
+                            <Setter Property="BorderBrush" Value="#D0D7DE" />
+                            <Setter Property="BorderThickness" Value="4,0,0,0" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+
+                <Style TargetType="{x:Type Paragraph}">
+                    <Setter Property="LineHeight" Value="24" />
+                    <Setter Property="Margin" Value="0,0,0,11" />
+                    <Style.Triggers>
+                        <Trigger Property="Tag" Value="Heading1">
+                            <Setter Property="FontSize" Value="30" />
+                            <Setter Property="LineHeight" Value="40" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                            <Setter Property="Foreground" Value="#1F2328" />
+                            <Setter Property="Margin" Value="0,0,0,16" />
+                            <Setter Property="Padding" Value="0,0,0,8" />
+                            <Setter Property="BorderBrush" Value="#D8DEE4" />
+                            <Setter Property="BorderThickness" Value="0,0,0,1" />
+                        </Trigger>
+                        <Trigger Property="Tag" Value="Heading2">
+                            <Setter Property="FontSize" Value="23" />
+                            <Setter Property="LineHeight" Value="32" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                            <Setter Property="Foreground" Value="#1F2328" />
+                            <Setter Property="Margin" Value="0,20,0,12" />
+                            <Setter Property="Padding" Value="0,0,0,7" />
+                            <Setter Property="BorderBrush" Value="#D8DEE4" />
+                            <Setter Property="BorderThickness" Value="0,0,0,1" />
+                        </Trigger>
+                        <Trigger Property="Tag" Value="Heading3">
+                            <Setter Property="FontSize" Value="18" />
+                            <Setter Property="LineHeight" Value="26" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                            <Setter Property="Foreground" Value="#24292F" />
+                            <Setter Property="Margin" Value="0,18,0,9" />
+                        </Trigger>
+                        <Trigger Property="Tag" Value="Heading4">
+                            <Setter Property="FontSize" Value="16" />
+                            <Setter Property="LineHeight" Value="23" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                            <Setter Property="Foreground" Value="#24292F" />
+                            <Setter Property="Margin" Value="0,16,0,7" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+
+                <Style TargetType="{x:Type BlockUIContainer}">
+                    <Style.Triggers>
+                        <Trigger Property="Tag" Value="CodeBlock">
+                            <Setter Property="Margin" Value="0,4,0,14" />
+                            <Setter Property="Background" Value="#F1F3F5" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+
+                <Style TargetType="{x:Type List}">
+                    <Setter Property="Margin" Value="14,2,0,14" />
+                    <Setter Property="Padding" Value="0" />
+                </Style>
+
+                <Style TargetType="{x:Type Run}">
+                    <Style.Triggers>
+                        <Trigger Property="Tag" Value="CodeSpan">
+                            <Setter Property="FontFamily" Value="Consolas" />
+                            <Setter Property="FontSize" Value="13" />
+                            <Setter Property="Foreground" Value="#1F2328" />
+                            <Setter Property="Background" Value="#F1F3F5" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+
+                <Style TargetType="{x:Type Span}">
+                    <Style.Triggers>
+                        <Trigger Property="Tag" Value="CodeSpan">
+                            <Setter Property="FontFamily" Value="Consolas" />
+                            <Setter Property="FontSize" Value="13" />
+                            <Setter Property="Foreground" Value="#1F2328" />
+                            <Setter Property="Background" Value="#F1F3F5" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+
+                <Style TargetType="{x:Type Hyperlink}">
+                    <Setter Property="Foreground" Value="#3B6FD8" />
+                    <Setter Property="TextDecorations" Value="None" />
+                    <Setter Property="Cursor" Value="Hand" />
+                    <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="#2F5FB3" />
+                            <Setter Property="TextDecorations" Value="Underline" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Style.Resources>
+        </Style>
+    </Window.Resources>
+
     <Grid x:Name="PreviewContent">
         <Grid.RowDefinitions>
             <RowDefinition />
@@ -23,6 +138,18 @@
                  VerticalScrollBarVisibility="Auto"
                  HorizontalScrollBarVisibility="Disabled"
                  Visibility="Collapsed" />
+        <Border x:Name="PreviewMarkdownBackground"
+                Background="#FAFAFB"
+                Visibility="Collapsed" />
+        <FlowDocumentScrollViewer x:Name="PreviewMarkdown"
+                                  Margin="12"
+                                  MaxWidth="960"
+                                  HorizontalAlignment="Center"
+                                  Background="#FAFAFB"
+                                  IsToolBarVisible="False"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Visibility="Collapsed" />
         <TextBlock x:Name="StatusText"
                    Grid.Row="1"
                    Margin="12,0,12,12"
