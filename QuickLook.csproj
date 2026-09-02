@@ -5,6 +5,10 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <AssemblyName>QPeek</AssemblyName>
     <RootNamespace>QuickLook</RootNamespace>
+    <Version>0.2.0</Version>
+    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+    <FileVersion>0.2.0.0</FileVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ApplicationIcon>icon\outputs\QPeek.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
