@@ -339,8 +339,12 @@ V0.9 暂不包含：Markdown 内嵌图片、远程资源、原始 HTML、Mermaid
 - [x] 生成并核验 `QPeek-v0.2.0-win-x64.zip`，记录文件大小和 SHA-256。
   - 发布目录共 476 个文件；ZIP 逐项核对后 476/476 个文件名称和大小一致，压缩包大小 72.9 MiB。
   - ZIP SHA-256：`7381B1611E21CB250DFA873DF1483363512C3981764EDE3A56C1135CBB0B7A83`。
-- [ ] 提交并推送发布资料，创建 `v0.2.0` GitHub Release 并上传 ZIP。
-- [ ] 匿名验证 Release 页面及附件可以公开访问。
+- [x] 提交并推送发布资料，创建 `v0.2.0` GitHub Release 并上传 ZIP。
+  - `v0.2.0` 标签、标题、Release Notes 和 `QPeek-v0.2.0-win-x64.zip` 已发布；该版本未标记为 Pre-release。
+- [x] 匿名验证 Release 页面及附件可以公开访问。
+  - 未使用 GitHub 登录信息的 HTTP 请求已确认 Release 页面返回 `200 text/html`，附件下载最终返回 `200 application/octet-stream`。
+
+- [x] 完成 Release 0.2：`v0.2.0` 正式版及 Windows 11 x64 自包含 ZIP 已公开发布。
 
 ## 计划：V0.10 视频预览
 
